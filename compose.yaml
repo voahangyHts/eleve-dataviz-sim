@@ -1,0 +1,80 @@
+# ============================================================================
+#  Simulation du cours « Visualisation de données » — fil rouge NYC Taxi
+#  (version allégée du compose.yaml du cours : seulement la base S1–S6)
+# ============================================================================
+#  Démarrer   : docker compose up -d
+#  Vérifier   : docker compose ps
+#  Arrêter    : docker compose stop      (fin de séance)
+#  Jupyter    : http://localhost:8888/lab?token=cours
+#  ⚠ Ne pas lancer en même temps que le vrai cours : mêmes ports (8888, 9000…).
+#    Arrêter l'autre d'abord avec : docker compose stop
+# ============================================================================
+name: dataviz-sim
+
+services:
+
+  # --- Notebooks + Spark ----------------------------------------------------
+  jupyter:
+    image: quay.io/jupyter/pyspark-notebook:latest
+    ports:
+      - "8888:8888"   # JupyterLab -> http://localhost:8888/lab?token=cours
+      - "4040:4040"   # Spark UI   -> http://localhost:4040 (session Spark active)
+    volumes:
+      - .:/home/jovyan/work            # tout le dépôt est visible dans Jupyter
+      - ivy-cache:/home/jovyan/.ivy2   # jars Spark téléchargés une seule fois
+    command: start-notebook.py --IdentityProvider.token=${JUPYTER_TOKEN:-cours}
+    environment:
+      S3_ENDPOINT: http://rustfs:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-rustfsadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-rustfsadmin}
+      PG_URL: jdbc:postgresql://postgres:5432/${PG_DB:-nyctaxi}
+      PG_HOST: postgres
+      PG_DB: ${PG_DB:-nyctaxi}
+      PG_USER: ${PG_USER:-cours}
+      PG_PASSWORD: ${PG_PASSWORD:-cours}
+    depends_on:
+      - postgres
+      - rustfs
+
+  # --- Data lake S3 (servira à la séance 01b : couche bronze) ----------------
+  rustfs-init:
+    image: alpine:3.20
+    command: sh -c "chown -R 10001:10001 /data && echo volume pret"
+    volumes:
+      - lake-data:/data
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    ports:
+      - "9000:9000"   # API S3
+      - "9001:9001"   # Console web -> http://localhost:9001
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:-rustfsadmin}
+      RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
+    volumes:
+      - lake-data:/data
+    depends_on:
+      rustfs-init:
+        condition: service_completed_successfully
+
+  # --- Base de restitution (servira à la séance S02 : couche gold) -----------
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${PG_USER:-cours}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-cours}
+      POSTGRES_DB: ${PG_DB:-nyctaxi}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
+volumes:
+  ivy-cache:
+  lake-data:
+  pg-data:

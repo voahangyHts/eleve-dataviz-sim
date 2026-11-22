@@ -1,0 +1,12 @@
+# Les données sont téléchargées par scripts/telecharger_donnees.sh :
+# trop lourdes pour Git, chacun les télécharge lui-même.
+data/
+*.part
+
+# Fichiers techniques
+.ipynb_checkpoints/
+__pycache__/
+spark-warehouse/
+metastore_db/
+derby.log
+.env
